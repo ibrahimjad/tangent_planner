@@ -1,6 +1,6 @@
 # TangentPlanner
 
-**ROS plugin for the base local planner which uses the Tangent Bug algorithm**
+**ROS plugin for the base local planner which uses the tangent bug algorithm**
 
 This plugin adheres to the BaseLocalPlanner interface in the nav_core package.
 
