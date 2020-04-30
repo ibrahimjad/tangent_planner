@@ -1,0 +1,7 @@
+<library path="lib/libtangent_planner">
+  <class name="tangent_planner/TangentPlanner" type="tangent_planner::TangentPlanner" base_class_type="nav_core::BaseLocalPlanner">
+    <description>
+      This is local planner based on Tangent Bug algorithm.
+    </description>
+  </class>
+</library>

@@ -1,0 +1,11 @@
+TangentPlanner:
+
+# The velocity when robot is moving in a straight line
+  max_trans_vel:  0.22
+
+# The velocity when robot is rotating
+  max_rot_vel: 2.75
+
+# Goal Tolerance Parametes
+  xy_goal_tolerance: 0.05
+  yaw_goal_tolerance: 0.17
