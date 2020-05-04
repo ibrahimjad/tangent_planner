@@ -102,7 +102,6 @@ namespace tangent_planner
             n.getParam(planner_name + "/max_rot_vel", max_rot_vel_);
             n.getParam(planner_name + "/xy_goal_tolerance", xy_goal_tolerance_);
             n.getParam(planner_name + "/yaw_goal_tolerance", yaw_goal_tolerance_);
-            n.getParam(local_costmap_name + "/obstacle_range", obstacle_range_);
         }
         catch (const ros::InvalidNameException &e)
         {
@@ -412,6 +411,7 @@ namespace tangent_planner
         double temp_angle = 0;
         double right_angle, left_angle;
         double min_distance = std::numeric_limits<double>::max();
+        double desired_distance = 0.5;
 
         for (double angle = -M_PI_2; angle < M_PI_2; angle += laser_msg_->angle_increment)
         {
@@ -421,7 +421,7 @@ namespace tangent_planner
             {
                 continue;
             }
-            else if (abs(min_distance - obstacle_range_) >= range - obstacle_range_)
+            else if (abs(min_distance - desired_distance) >= range - desired_distance)
             {
                 min_distance = range;
                 temp_angle = angle;
@@ -452,9 +452,10 @@ namespace tangent_planner
         unsigned int index;
         angleToLaserIndex(goal_angle_, index);
         double range = laser_msg_->ranges.at(index);
+        double obstacle_range = 0.5;
 
-        double start_angle = goal_angle_ + atan2(2 * robot_width_min_, obstacle_range_);
-        double end_angle = goal_angle_ + atan2(2 * robot_width_max_, obstacle_range_);
+        double start_angle = goal_angle_ + 2 * atan2(robot_width_min_, obstacle_range);
+        double end_angle = goal_angle_ + 2 * atan2(2 * robot_width_max_, obstacle_range);
 
         for (double angle = start_angle; angle <= end_angle; angle += laser_msg_->angle_increment)
         {
@@ -465,7 +466,7 @@ namespace tangent_planner
             {
                 continue;
             }
-            else if ((range < obstacle_range_ && range <= goal_distance_))
+            else if ((range < obstacle_range && range <= goal_distance_))
             {
                 return true;
             }
