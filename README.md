@@ -19,3 +19,8 @@ source ~/.bashrc
 In the move_base launch file, change the value of **base_local_planner** parameter to **tangent_planner/TangentPlanner**
 
 Load the parameters in the [param/tangent_planner_params.yaml](param/tangent_planner_params.yaml).
+
+## Tangent Bug Algorithm
+[Explaination of how the algorithm work can be found here](http://www.cs.bilkent.edu.tr/~culha/cs548/hw1/)
+
+![Discontiniouty points visualized in RViz.](figure/rviz.png "Discontiniouty points visualized in RViz.")
