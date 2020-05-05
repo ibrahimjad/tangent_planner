@@ -455,7 +455,7 @@ namespace tangent_planner
         double obstacle_range = 0.5;
 
         double start_angle = goal_angle_ + 2 * atan2(robot_width_min_, obstacle_range);
-        double end_angle = goal_angle_ + 2 * atan2(2 * robot_width_max_, obstacle_range);
+        double end_angle = goal_angle_ + 2 * atan2(robot_width_max_, obstacle_range);
 
         for (double angle = start_angle; angle <= end_angle; angle += laser_msg_->angle_increment)
         {
@@ -536,11 +536,14 @@ namespace tangent_planner
 
     void TangentPlanner::angleToLaserIndex(double angle, unsigned int &index)
     {
-        angle = (angle < 0) ? angle + 2 * M_PI : angle;
+        angle = (angle < laser_msg_->angle_min) ? angle + 2 * M_PI : angle;
+        double angle_increment_deg = 180.0 / M_PI * laser_msg_->angle_increment;
+        
         if (angle >= laser_msg_->angle_min && angle <= laser_msg_->angle_max)
         {
+            angle = (angle - laser_msg_->angle_min) * (2 * M_PI) / (laser_msg_->angle_max - laser_msg_->angle_min);
             double angle_deg = 180.0 / M_PI * angle;
-            double angle_positive = (angle_deg >= 0) ? angle_deg : angle_deg + 360.0;
+            double angle_positive = (angle_deg >= 0) ? angle_deg / angle_increment_deg : angle_deg / angle_increment_deg + laser_msg_->ranges.size();
             index = std::lround(angle_positive);
             index = (index == laser_msg_->ranges.size()) ? 0 : index;
         }
