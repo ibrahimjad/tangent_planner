@@ -22,8 +22,9 @@ namespace tangent_planner
 {
     TangentPlanner::TangentPlanner() : initialized_(false), goal_reached_(false), tf_(nullptr), costmap_ros_(nullptr),
                                        robot_front_(0), robot_back_(0), robot_width_min_(0), robot_width_max_(0),
-                                       plan_size_(0), plan_index_(0), kp_(0), kp_i_(0), dreached_(0), dfollowed_(0),
-                                       is_new_goal_(true), heuristic_distance_(std::numeric_limits<double>::max())
+                                       plan_size_(0), plan_index_(0), kp_(0), kp_i_(0), is_new_goal_(true),
+                                       dreached_(std::numeric_limits<float>::max()), dfollowed_(std::numeric_limits<float>::max()),
+                                       heuristic_distance_(0), prev_heuristic_distance_(0)
     {
     }
 
@@ -231,8 +232,8 @@ namespace tangent_planner
 
     void TangentPlanner::updateGoal()
     {
-        double dx = global_plan_.at(plan_size_ - 1).x - current_pose_.x;
-        double dy = global_plan_.at(plan_size_ - 1).y - current_pose_.y;
+        float dx = global_plan_.at(plan_size_ - 1).x - current_pose_.x;
+        float dy = global_plan_.at(plan_size_ - 1).y - current_pose_.y;
         goal_distance_ = hypot(dx, dy) - robot_front_;
         goal_angle_ = atan2(dy, dx) - current_pose_.theta;
         normalizeAngle(goal_angle_);
@@ -243,37 +244,36 @@ namespace tangent_planner
 
     void TangentPlanner::updateState()
     {
-        if (!isInGoalDirection() && !isAtGoal() && isNewGoal())
+        if (state_ != BugState::FollowBoundary)
         {
-            state_ = BugState::TurnToGoal;
-        }
-        else if (isInGoalDirection() && isNewGoal())
-        {
-            is_new_goal_ = false;
-        }
-        else if (isAtGoal() && !isAtGoalOrientation())
-        {
-            state_ = BugState::OrientToGoal;
-        }
-        else if ((isInGoalDirection() || !foundObstacle()) && isCloseToGoal())
-        {
-            state_ = BugState::CloseToGoal;
-        }
-        else if (isAtGoal() && isAtGoalOrientation())
-        {
-            state_ = BugState::StopAtGoal;
-        }
-        else if (!foundObstacle())
-        {
-            state_ = BugState::MotionToGoal;
-        }
-        else if (foundObstacle())
-        {
-            state_ = BugState::GoDiscontinuity;
-        }
-        if (foundLocalMinima() && dfollowed_ >= dreached_)
-        {
-            state_ = BugState::FollowBoundary;
+            if (!isInGoalDirection() && !isAtGoal() && isNewGoal())
+            {
+                state_ = BugState::TurnToGoal;
+            }
+            else if (isInGoalDirection() && isNewGoal())
+            {
+                is_new_goal_ = false;
+            }
+            else if (isAtGoal() && !isAtGoalOrientation())
+            {
+                state_ = BugState::OrientToGoal;
+            }
+            else if ((isInGoalDirection() || !foundObstacle()) && isCloseToGoal())
+            {
+                state_ = BugState::CloseToGoal;
+            }
+            else if (isAtGoal() && isAtGoalOrientation())
+            {
+                state_ = BugState::StopAtGoal;
+            }
+            else
+            {
+                state_ = BugState::MotionToGoal;
+                if (foundObstacle() && foundLocalMinima())
+                {
+                    state_ = BugState::FollowBoundary;
+                }
+            }
         }
     }
 
@@ -300,13 +300,10 @@ namespace tangent_planner
         }
         else if (state_ == BugState::MotionToGoal)
         {
-            kp_ = kp_ + kp_i_;
-            kp_ = kp_ < 1.0 ? kp_ : 1.0;
-            angular_velocity_ = 0.5 * goal_angle_;
-        }
-        else if (state_ == BugState::GoDiscontinuity)
-        {
-            selectDiscontinuityPoint();
+            if (foundObstacle())
+            {
+                selectDiscontinuityPoint();
+            }
             kp_ = kp_ + kp_i_;
             kp_ = kp_ < 1.0 ? kp_ : 1.0;
             angular_velocity_ = goal_angle_;
@@ -339,11 +336,11 @@ namespace tangent_planner
         discontinuities_ranges_.clear();
         discontinuities_corrections_.clear();
 
-        double range = 0, next_range = 0;
-        double range_diff = 0;
+        float range = 0, next_range = 0;
+        float range_diff = 0;
         unsigned int index;
 
-        for (double angle = laser_msg_->angle_min; angle < laser_msg_->angle_max; angle += laser_msg_->angle_increment)
+        for (float angle = laser_msg_->angle_min; angle < laser_msg_->angle_max - laser_msg_->angle_increment; angle += laser_msg_->angle_increment)
         {
             angleToLaserIndex(angle, index);
             range = laser_msg_->ranges.at(index) - robot_front_;
@@ -375,13 +372,13 @@ namespace tangent_planner
 
     void TangentPlanner::selectDiscontinuityPoint()
     {
-        prev_heuristic_distance_ = tangent_selected_ ? heuristic_distance_ : 0;
+        prev_heuristic_distance_ = heuristic_distance_;
 
         tangent_selected_ = false;
-        double correction = 0.0;
-        double angle = 0.0;
-        double obstacle_to_goal_distance = 0.0;
-        heuristic_distance_ = std::numeric_limits<double>::max();
+        float correction = 0.0;
+        float angle = 0.0;
+        float obstacle_to_goal_distance = 0.0;
+        heuristic_distance_ = std::numeric_limits<float>::max();
 
         for (size_t i = 0; i < discontinuities_angles_.size(); i++)
         {
@@ -406,58 +403,53 @@ namespace tangent_planner
     void TangentPlanner::followBoundaries()
     {
         unsigned int index;
-        bool selected = false;
-        double range = 0;
-        double temp_angle = 0;
-        double right_angle, left_angle;
-        double min_distance = std::numeric_limits<double>::max();
-        double desired_distance = 0.5;
+        float angle = 0;
+        float right_angle, left_angle;
 
-        for (double angle = -M_PI_2; angle < M_PI_2; angle += laser_msg_->angle_increment)
+        float desired_distance = 0.5;
+        double min_distance;
+
+        dreached_ = goal_distance_;
+        dfollowed_ = (dfollowed_ > dreached_) ? dreached_ : dfollowed_;
+        dreached_ <= dfollowed_ ? state_ = BugState::MotionToGoal : 0;
+
+        std::vector<float>::const_iterator result = std::min_element(laser_msg_->ranges.begin(), laser_msg_->ranges.end(), [&](float x, float y) {
+            return x - desired_distance < y - desired_distance;
+        });
+
+        index = std::distance(laser_msg_->ranges.begin(), result);
+        min_distance = laser_msg_->ranges.at(index);
+        angle = index * laser_msg_->angle_increment;
+
+        left_angle = angle + M_PI_2;
+        right_angle = angle - M_PI_2;
+
+        bool direction_sign = std::signbit(min_distance - desired_distance);
+        float correction = 0.15 * min_distance / desired_distance;
+
+        if (abs(min_distance - desired_distance) > 0.05)
         {
-            angleToLaserIndex(angle, index);
-            range = laser_msg_->ranges.at(index);
-            if (std::isnan(range) || std::isinf(range) || range < 0.001)
-            {
-                continue;
-            }
-            else if (abs(min_distance - desired_distance) >= range - desired_distance)
-            {
-                min_distance = range;
-                temp_angle = angle;
-                selected = true;
-            }
+            left_angle += direction_sign ? correction : correction * (-1);
+            right_angle += direction_sign ? correction * (-1) : correction;
         }
-        if (selected)
-        {
-            dreached_ = sqrt(square(min_distance) + square(goal_distance_) - 2 * min_distance * goal_distance_ * cos(current_pose_.theta - goal_angle_));
-            dfollowed_ = (dfollowed_ > dreached_) ? dreached_ : dfollowed_;
-            left_angle = temp_angle + M_PI_2;
-            right_angle = temp_angle - M_PI_2;
-            if ((abs(left_angle + current_pose_.theta) > abs(right_angle + current_pose_.theta)))
-            {
-                goal_angle_ = right_angle;
-            }
-            else
-            {
-                goal_angle_ = left_angle;
-            }
-            normalizeAngle(goal_angle_);
-            goal_angle_ = abs(goal_angle_) < yaw_goal_tolerance_ ? 0 : goal_angle_;
-        }
+
+        goal_angle_ = right_angle;
+
+        normalizeAngle(goal_angle_);
+        goal_angle_ = abs(goal_angle_) < yaw_goal_tolerance_ ? 0 : goal_angle_;
     }
 
     bool TangentPlanner::foundObstacle()
     {
         unsigned int index;
         angleToLaserIndex(goal_angle_, index);
-        double range = laser_msg_->ranges.at(index);
-        double obstacle_range = 0.5;
+        float range = laser_msg_->ranges.at(index);
+        float obstacle_range = 0.5;
 
-        double start_angle = goal_angle_ + 2 * atan2(robot_width_min_, obstacle_range);
-        double end_angle = goal_angle_ + 2 * atan2(robot_width_max_, obstacle_range);
+        float start_angle = goal_angle_ + 2 * atan2(robot_width_min_, obstacle_range);
+        float end_angle = goal_angle_ + 2 * atan2(robot_width_max_, obstacle_range);
 
-        for (double angle = start_angle; angle <= end_angle; angle += laser_msg_->angle_increment)
+        for (float angle = start_angle; angle <= end_angle; angle += laser_msg_->angle_increment)
         {
             angleToLaserIndex(angle, index);
             range = laser_msg_->ranges.at(index);
@@ -479,9 +471,10 @@ namespace tangent_planner
     {
         is_new_goal_ = true;
         tangent_selected_ = false;
-        heuristic_distance_ = std::numeric_limits<double>::max();
-        dreached_ = std::numeric_limits<double>::max();
-        dfollowed_ = std::numeric_limits<double>::max();
+        heuristic_distance_ = 0;
+        prev_heuristic_distance_ = 0;
+        dfollowed_ = std::numeric_limits<float>::max();
+        dreached_ = std::numeric_limits<float>::max();
     }
 
     bool TangentPlanner::isGoalReached()
@@ -500,7 +493,7 @@ namespace tangent_planner
 
     bool TangentPlanner::foundLocalMinima()
     {
-        return prev_heuristic_distance_ > heuristic_distance_;
+        return prev_heuristic_distance_ - heuristic_distance_ > 2 * xy_goal_tolerance_;
     }
 
     bool TangentPlanner::isCloseToGoal()
@@ -528,22 +521,22 @@ namespace tangent_planner
         return is_new_goal_;
     }
 
-    void TangentPlanner::normalizeAngle(double &angle)
+    void TangentPlanner::normalizeAngle(float &angle)
     {
         angle = (angle > M_PI) ? angle - 2 * M_PI : angle;
         angle = (angle < -M_PI) ? angle + 2 * M_PI : angle;
     }
 
-    void TangentPlanner::angleToLaserIndex(double angle, unsigned int &index)
+    void TangentPlanner::angleToLaserIndex(float angle, unsigned int &index)
     {
         angle = (angle < laser_msg_->angle_min) ? angle + 2 * M_PI : angle;
-        double angle_increment_deg = 180.0 / M_PI * laser_msg_->angle_increment;
-        
+        float angle_increment_deg = 180.0 / M_PI * laser_msg_->angle_increment;
+
         if (angle >= laser_msg_->angle_min && angle <= laser_msg_->angle_max)
         {
             angle = (angle - laser_msg_->angle_min) * (2 * M_PI) / (laser_msg_->angle_max - laser_msg_->angle_min);
-            double angle_deg = 180.0 / M_PI * angle;
-            double angle_positive = (angle_deg >= 0) ? angle_deg / angle_increment_deg : angle_deg / angle_increment_deg + laser_msg_->ranges.size();
+            float angle_deg = 180.0 / M_PI * angle;
+            float angle_positive = (angle_deg >= 0) ? angle_deg / angle_increment_deg : angle_deg / angle_increment_deg + laser_msg_->ranges.size();
             index = std::lround(angle_positive);
             index = (index == laser_msg_->ranges.size()) ? 0 : index;
         }

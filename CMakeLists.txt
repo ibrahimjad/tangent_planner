@@ -2,11 +2,12 @@ cmake_minimum_required(VERSION 2.8.3)
 project(tangent_planner)
 
 set(CMAKE_CXX_STANDARD 11)
-add_definitions(-Wall -Werror -Wno-reorder)
+#add_definitions(-Wall -Werror -Wno-reorder)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   geometry_msgs
+  gazebo_msgs
   visualization_msgs
   sensor_msgs
   costmap_2d
@@ -21,6 +22,7 @@ catkin_package(
   CATKIN_DEPENDS
     roscpp
     geometry_msgs
+    gazebo_msgs
     visualization_msgs
     sensor_msgs
     costmap_2d
